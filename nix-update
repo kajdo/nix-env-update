@@ -1,0 +1,43 @@
+#!/usr/bin/bash
+
+echo "Running nix-channel --update"
+nix-channel --update
+
+# Get the list of installed packages and save it
+installed_packages=$(nix-env -q)
+
+# Iterate over each installed package
+while IFS= read -r package; do
+    # Extract the package name (the first part of the output)
+    package_name=$(echo "$package" | awk '{print $1}')
+
+    # Remove the version part (everything after the last hyphen)
+    base_package_name="${package_name%-*}"
+
+    # Construct the attribute path for nix-env
+    attr_path="nixpkgs.$base_package_name"
+
+    # Print info about the package being updated
+    echo "Updating package: $base_package_name"
+    #echo "Updating package: $attr_path"
+
+    # Update the package
+    nix-env -uA "$attr_path"
+done <<< "$installed_packages"
+
+echo "Running nix-prune to clean up unused packages"
+
+# Number of generations to keep
+NUM_GENERATIONS=5
+
+# List all generations, sort them, and keep only the latest $NUM_GENERATIONS
+# for profile in /nix/var/nix/profiles/system /nix/var/nix/profiles/per-user/*; do
+for profile in /nix/var/nix/profiles/per-user/*; do
+    nix-env --list-generations | awk '{print $1}' | sort -nr | tail -n +$((NUM_GENERATIONS + 1)) | while read gen; do
+        nix-env --delete-generations $gen --profile $profile
+    done
+done
+
+# Run garbage collection
+nix-collect-garbage --delete-older-than 30d
+
